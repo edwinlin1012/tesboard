@@ -76,6 +76,53 @@ export function groupRoutes(
   return routes.slice(0, maxPaths).map((r) => downsampleSeries(r, maxPerPath))
 }
 
+/**
+ * Douglas–Peucker polyline simplification with a tolerance in metres. Unlike a
+ * uniform-stride downsample (which drops vertices blindly and cuts corners off a
+ * road-matched route), this keeps every point that deviates more than `toleranceM`
+ * from the straight line between its kept neighbours — so curves and turns survive
+ * while straight stretches collapse to their endpoints. Distances use a flat
+ * equirectangular approximation (fine at street scale). Iterative, so a
+ * many-thousand-point full-overview match can't blow the stack.
+ */
+export function simplifyPath(points: LatLng[], toleranceM: number): LatLng[] {
+  if (points.length <= 2) return points
+  const midLat = points[Math.floor(points.length / 2)][0]
+  const mPerDegLng = Math.cos((midLat * Math.PI) / 180) * 111_320
+  const mPerDegLat = 110_540
+  const tol2 = toleranceM * toleranceM
+  const keep = new Uint8Array(points.length)
+  keep[0] = 1
+  keep[points.length - 1] = 1
+  const stack: [number, number][] = [[0, points.length - 1]]
+  while (stack.length) {
+    const [a, b] = stack.pop()!
+    if (b - a < 2) continue
+    const [aLat, aLng] = points[a]
+    const [bLat, bLng] = points[b]
+    const dx = (bLng - aLng) * mPerDegLng
+    const dy = (bLat - aLat) * mPerDegLat
+    const len2 = dx * dx + dy * dy
+    let maxD2 = -1
+    let maxI = -1
+    for (let i = a + 1; i < b; i++) {
+      const ex = (points[i][1] - aLng) * mPerDegLng
+      const ey = (points[i][0] - aLat) * mPerDegLat
+      // Perpendicular distance to the a→b line (or plain distance when a === b).
+      const d2 = len2 === 0 ? ex * ex + ey * ey : ((ex * dy - ey * dx) ** 2) / len2
+      if (d2 > maxD2) {
+        maxD2 = d2
+        maxI = i
+      }
+    }
+    if (maxD2 > tol2) {
+      keep[maxI] = 1
+      stack.push([a, maxI], [maxI, b])
+    }
+  }
+  return points.filter((_, i) => keep[i] === 1)
+}
+
 /** Great-circle metres between two points — a mirror of server/geo.haversineMeters,
  *  inlined to keep this client-side lib free of any server import. */
 function metersBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {

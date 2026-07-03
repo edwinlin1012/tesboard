@@ -31,6 +31,7 @@ import { Route as DashboardDrivesDriveIdRouteImport } from './routes/dashboard/d
 import { Route as DashboardChargingMapRouteImport } from './routes/dashboard/charging_.map'
 import { Route as DashboardChargingInsightsRouteImport } from './routes/dashboard/charging_.insights'
 import { Route as DashboardChargingChargeIdRouteImport } from './routes/dashboard/charging_.$chargeId'
+import { Route as ApiCronRouteMatchRouteImport } from './routes/api/cron/route-match'
 import { Route as ApiCronPollRouteImport } from './routes/api/cron/poll'
 import { Route as ApiAuthTeslaLoginRouteImport } from './routes/api/auth/tesla/login'
 import { Route as ApiAuthTeslaCallbackRouteImport } from './routes/api/auth/tesla/callback'
@@ -147,6 +148,11 @@ const DashboardChargingChargeIdRoute =
     path: '/charging/$chargeId',
     getParentRoute: () => DashboardRoute,
   } as any)
+const ApiCronRouteMatchRoute = ApiCronRouteMatchRouteImport.update({
+  id: '/api/cron/route-match',
+  path: '/api/cron/route-match',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronPollRoute = ApiCronPollRouteImport.update({
   id: '/api/cron/poll',
   path: '/api/cron/poll',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/api/cron/poll': typeof ApiCronPollRoute
+  '/api/cron/route-match': typeof ApiCronRouteMatchRoute
   '/dashboard/charging/$chargeId': typeof DashboardChargingChargeIdRoute
   '/dashboard/charging/insights': typeof DashboardChargingInsightsRoute
   '/dashboard/charging/map': typeof DashboardChargingMapRoute
@@ -204,6 +211,7 @@ export interface FileRoutesByTo {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard': typeof DashboardIndexRoute
   '/api/cron/poll': typeof ApiCronPollRoute
+  '/api/cron/route-match': typeof ApiCronRouteMatchRoute
   '/dashboard/charging/$chargeId': typeof DashboardChargingChargeIdRoute
   '/dashboard/charging/insights': typeof DashboardChargingInsightsRoute
   '/dashboard/charging/map': typeof DashboardChargingMapRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/dashboard/settings': typeof DashboardSettingsRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/api/cron/poll': typeof ApiCronPollRoute
+  '/api/cron/route-match': typeof ApiCronRouteMatchRoute
   '/dashboard/charging_/$chargeId': typeof DashboardChargingChargeIdRoute
   '/dashboard/charging_/insights': typeof DashboardChargingInsightsRoute
   '/dashboard/charging_/map': typeof DashboardChargingMapRoute
@@ -261,6 +270,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/'
     | '/api/cron/poll'
+    | '/api/cron/route-match'
     | '/dashboard/charging/$chargeId'
     | '/dashboard/charging/insights'
     | '/dashboard/charging/map'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard'
     | '/api/cron/poll'
+    | '/api/cron/route-match'
     | '/dashboard/charging/$chargeId'
     | '/dashboard/charging/insights'
     | '/dashboard/charging/map'
@@ -314,6 +325,7 @@ export interface FileRouteTypes {
     | '/dashboard/settings'
     | '/dashboard/'
     | '/api/cron/poll'
+    | '/api/cron/route-match'
     | '/dashboard/charging_/$chargeId'
     | '/dashboard/charging_/insights'
     | '/dashboard/charging_/map'
@@ -332,6 +344,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRouteWithChildren
   LoginRoute: typeof LoginRoute
   ApiCronPollRoute: typeof ApiCronPollRoute
+  ApiCronRouteMatchRoute: typeof ApiCronRouteMatchRoute
   ApiAuthTeslaCallbackRoute: typeof ApiAuthTeslaCallbackRoute
   ApiAuthTeslaLoginRoute: typeof ApiAuthTeslaLoginRoute
 }
@@ -492,6 +505,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardChargingChargeIdRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/api/cron/route-match': {
+      id: '/api/cron/route-match'
+      path: '/api/cron/route-match'
+      fullPath: '/api/cron/route-match'
+      preLoaderRoute: typeof ApiCronRouteMatchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/poll': {
       id: '/api/cron/poll'
       path: '/api/cron/poll'
@@ -569,18 +589,10 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRouteWithChildren,
   LoginRoute: LoginRoute,
   ApiCronPollRoute: ApiCronPollRoute,
+  ApiCronRouteMatchRoute: ApiCronRouteMatchRoute,
   ApiAuthTeslaCallbackRoute: ApiAuthTeslaCallbackRoute,
   ApiAuthTeslaLoginRoute: ApiAuthTeslaLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

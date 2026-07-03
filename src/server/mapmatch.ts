@@ -52,11 +52,22 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /** Brief in-call retries for a 429/5xx before giving up as transient (the caller then backs off). */
 const MAX_RETRIES = 1
 
+/**
+ * Snap radius (metres) sent per coordinate. Mapbox's default is 5m, which rejects
+ * fixes recorded in driveways / parking lots; 25m lets those still snap to the
+ * nearest road without letting the match wander to parallel streets.
+ */
+const SNAP_RADIUS_M = 25
+
 async function matchChunk(coords: [number, number][], token: string, attempt = 0): Promise<ChunkResult> {
   const path = coords.map(([lat, lng]) => `${lng.toFixed(6)},${lat.toFixed(6)}`).join(';')
+  // overview=full: the 'simplified' overview thins the line to a handful of vertices
+  // and the drawn route visibly cuts corners off roads; callers simplify themselves.
   const url =
     `${MAPBOX_MATCH_BASE}/${path}` +
-    `?geometries=geojson&overview=simplified&tidy=true&access_token=${encodeURIComponent(token)}`
+    `?geometries=geojson&overview=full&tidy=true` +
+    `&radiuses=${coords.map(() => SNAP_RADIUS_M).join(';')}` +
+    `&access_token=${encodeURIComponent(token)}`
   let res: Response
   try {
     res = await fetch(url)
@@ -87,12 +98,24 @@ async function matchChunk(coords: [number, number][], token: string, attempt = 0
   } catch {
     return { error: 'permanent' }
   }
-  const m = body.matchings?.[0]
-  const out = m?.geometry?.coordinates
-  if (!m || !Array.isArray(out) || out.length < 2) return { error: 'permanent' }
-  // Mapbox returns [lng,lat]; flip to [lat,lng].
-  const geometry = out.map(([lng, lat]) => [lat, lng] as [number, number])
-  return { geometry, confidence: typeof m.confidence === 'number' ? m.confidence : 0 }
+  // A sparse trace often comes back SPLIT into several matchings (Mapbox breaks the
+  // trace where it can't bridge a gap). Stitch them all in order — taking only the
+  // first would silently drop the rest of the drive. The seam between two matchings
+  // renders as one straight jump, which still beats losing the tail entirely.
+  const matchings = body.matchings ?? []
+  const geometry: [number, number][] = []
+  let confSum = 0
+  let n = 0
+  for (const m of matchings) {
+    const out = m?.geometry?.coordinates
+    if (!Array.isArray(out)) continue
+    // Mapbox returns [lng,lat]; flip to [lat,lng].
+    for (const [lng, lat] of out) geometry.push([lat, lng])
+    confSum += typeof m.confidence === 'number' ? m.confidence : 0
+    n++
+  }
+  if (geometry.length < 2) return { error: 'permanent' }
+  return { geometry, confidence: n > 0 ? confSum / n : 0 }
 }
 
 /**

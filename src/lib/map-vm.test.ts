@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clusterChargePoints, groupRoutes, mergeNearbyPoints, type RouteSnap, type RouteWindow } from './map-vm'
+import { clusterChargePoints, groupRoutes, mergeNearbyPoints, simplifyPath, type RouteSnap, type RouteWindow } from './map-vm'
 import type { ChargeWithLocation } from '../functions/charging.functions'
 
 const snap = (atMs: number, lat: number, lng: number): RouteSnap => ({ lat, lng, atMs })
@@ -144,5 +144,73 @@ describe('mergeNearbyPoints', () => {
 
   it('returns an empty array for no points', () => {
     expect(mergeNearbyPoints([])).toEqual([])
+  })
+})
+
+describe('simplifyPath', () => {
+  // ~0.001° lat ≈ 111m; tolerances below are in metres.
+  it('collapses a straight line to its endpoints', () => {
+    const line: [number, number][] = [
+      [37.0, -122.0],
+      [37.001, -122.0],
+      [37.002, -122.0],
+      [37.003, -122.0],
+    ]
+    expect(simplifyPath(line, 10)).toEqual([
+      [37.0, -122.0],
+      [37.003, -122.0],
+    ])
+  })
+
+  it('keeps a corner vertex that deviates beyond the tolerance', () => {
+    // An L-shape: the corner at [37.002, -122.0] sits far off the straight line
+    // between the endpoints — it must survive simplification.
+    const l: [number, number][] = [
+      [37.0, -122.0],
+      [37.001, -122.0],
+      [37.002, -122.0], // corner
+      [37.002, -122.001],
+      [37.002, -122.002],
+    ]
+    const out = simplifyPath(l, 10)
+    expect(out[0]).toEqual([37.0, -122.0])
+    expect(out[out.length - 1]).toEqual([37.002, -122.002])
+    expect(out).toContainEqual([37.002, -122.0])
+  })
+
+  it('drops wiggles smaller than the tolerance', () => {
+    // ~5m lateral jitter on an otherwise straight north-bound line.
+    const jitterDeg = 5 / 111_320
+    const wiggly: [number, number][] = [
+      [37.0, -122.0],
+      [37.001, -122.0 + jitterDeg],
+      [37.002, -122.0 - jitterDeg],
+      [37.003, -122.0],
+    ]
+    expect(simplifyPath(wiggly, 15)).toEqual([
+      [37.0, -122.0],
+      [37.003, -122.0],
+    ])
+  })
+
+  it('returns short inputs unchanged', () => {
+    const two: [number, number][] = [
+      [1, 1],
+      [2, 2],
+    ]
+    expect(simplifyPath(two, 100)).toEqual(two)
+    expect(simplifyPath([], 100)).toEqual([])
+  })
+
+  it('handles identical endpoints (a loop) without dividing by zero', () => {
+    const loop: [number, number][] = [
+      [37.0, -122.0],
+      [37.002, -122.0],
+      [37.002, -122.002],
+      [37.0, -122.0],
+    ]
+    const out = simplifyPath(loop, 10)
+    expect(out.length).toBeGreaterThanOrEqual(3)
+    expect(out[0]).toEqual(out[out.length - 1])
   })
 })

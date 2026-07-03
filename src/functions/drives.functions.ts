@@ -10,7 +10,7 @@ import { withDb, type Db } from '../server/db'
 import { rangeVinFilter, vinFilter, type VinFilter } from './vin'
 import { address, driveSession, geofence, vehicleSnapshot } from '../server/schema'
 import { addressLabel } from '../server/geo'
-import { groupRoutes, type LatLng, type RouteWindow } from '../lib/map-vm'
+import { groupRoutes, simplifyPath, type LatLng, type RouteWindow } from '../lib/map-vm'
 import { downsampleSeries } from '../lib/drive-detail-vm'
 import type { DriveSession } from '../types/db'
 
@@ -288,7 +288,11 @@ export const getDriveRoutes = createServerFn({ method: 'GET' })
         if (d.ended_at == null) continue
         const geom = d.route_geometry
         if (geom && geom.length >= 2) {
-          matchedRoutes.push(downsampleSeries(geom, 100))
+          // Trim payload with a shape-preserving simplify (15m tolerance), NOT a
+          // uniform stride — a stride drops corner vertices and the "road-matched"
+          // line visibly cuts across blocks. Stride cap only as a runaway guard.
+          const simplified = simplifyPath(geom, 15)
+          matchedRoutes.push(simplified.length > 400 ? downsampleSeries(simplified, 400) : simplified)
         } else if (d.route_match_status == null) {
           // Un-attempted (e.g. a new drive not yet snapped) → straight-line breadcrumb
           // until "Snap to roads" runs. Drives that WERE attempted but couldn't match

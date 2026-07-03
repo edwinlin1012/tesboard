@@ -18,6 +18,7 @@ import { driveSession, vehicleSnapshot } from '../server/schema'
 import { serverEnv } from '../server/env'
 import { mapMatch } from '../server/mapmatch'
 import { downsampleSeries } from '../lib/drive-detail-vm'
+import { simplifyPath } from '../lib/map-vm'
 
 /** Drives matched per invocation — the UI loops, so keep each call rate-limit-friendly. */
 const MAX_DRIVES = 4
@@ -66,7 +67,8 @@ async function setStatus(db: Db, userId: string, id: number, status: string): Pr
     .where(and(eq(driveSession.id, id), eq(driveSession.user_id, userId)))
 }
 
-async function backfillRouteMatchCore(db: Db, userId: string): Promise<RouteMatchBackfillResult> {
+/** Exported for the Bearer-guarded /api/cron/route-match trigger (scripted re-snaps). */
+export async function backfillRouteMatchCore(db: Db, userId: string): Promise<RouteMatchBackfillResult> {
   const token = serverEnv.mapboxToken()
   if (!token) return { configured: false, matched: 0, failed: 0, remaining: await countRemaining(db, userId), paused: false }
 
@@ -127,9 +129,11 @@ async function backfillRouteMatchCore(db: Db, userId: string): Promise<RouteMatc
     // Store every successful match. Mapbox reports low confidence on sparse (2-min
     // cadence) drives even when the road shape is fine, so a confidence floor would
     // throw away most real matches — a road-shaped line always beats a straight one.
+    // The full-overview geometry is dense (a vertex every few metres); simplify at a
+    // 5m tolerance so storage stays lean while curves/turns keep their shape.
     await db
       .update(driveSession)
-      .set({ route_geometry: r.geometry, route_match_status: 'matched', route_matched_at: new Date().toISOString() })
+      .set({ route_geometry: simplifyPath(r.geometry, 5), route_match_status: 'matched', route_matched_at: new Date().toISOString() })
       .where(and(eq(driveSession.id, d.id), eq(driveSession.user_id, userId)))
     matched++
   }
