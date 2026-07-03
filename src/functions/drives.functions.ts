@@ -3,7 +3,7 @@
  * snapshots (the Fleet API has no native trip endpoint), read here from Postgres.
  */
 import { createServerFn } from '@tanstack/react-start'
-import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, getTableColumns, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { authMiddleware } from '../server/auth-middleware'
 import { withDb, type Db } from '../server/db'
@@ -39,6 +39,16 @@ export const getDrives = createServerFn({ method: 'GET' })
     withDb((db) => getDrivesCore(db, context.userId, data)),
   )
 
+/**
+ * Every drive_session column EXCEPT the road-matched `route_geometry` blob. List
+ * reads (the dashboard aggregate, drive history, exports) must use this: with
+ * full-overview matching the geometry averages dozens of points per drive, and
+ * parsing + re-serializing it for hundreds of rows blows the Workers Free-plan
+ * ~10ms CPU cap (error 1102). Only getDriveRoutes (the map) reads the geometry.
+ */
+const { route_geometry: _routeGeometry, ...driveListColumns } = getTableColumns(driveSession)
+export { driveListColumns }
+
 export async function getDrivesCore(
   db: Db,
   userId: string,
@@ -46,7 +56,7 @@ export async function getDrivesCore(
 ): Promise<DrivesPayload> {
     const vin = data?.vin
     const rows = await db
-      .select()
+      .select(driveListColumns)
       .from(driveSession)
       .where(
         and(
@@ -58,7 +68,8 @@ export async function getDrivesCore(
       .orderBy(desc(driveSession.started_at))
       .limit(500)
 
-    const baseDrives = rows as DriveSession[]
+    // route_geometry is deliberately not selected; null it to satisfy the row type.
+    const baseDrives = rows.map((r) => ({ ...r, route_geometry: null })) as DriveSession[]
 
     // Resolve place names for the start/end of each drive. A named geofence (Home,
     // Work) wins over the reverse-geocoded street address. Both lookups are scoped

@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { authMiddleware } from '../server/auth-middleware'
 import { withDb } from '../server/db'
 import { chargeSession, driveSession, vehicleSnapshot } from '../server/schema'
+import { driveListColumns } from './drives.functions'
 import type { ChargeSession, DriveSession } from '../types/db'
 
 export interface ExportFile {
@@ -72,11 +73,14 @@ export const exportData = createServerFn({ method: 'GET' })
               .from(chargeSession)
               .where(and(eq(chargeSession.user_id, userId), vin ? eq(chargeSession.vin, vin) : undefined))
               .orderBy(desc(chargeSession.started_at))) as ChargeSession[])
-          : ((await db
-              .select()
+          : // driveListColumns: route_geometry stays out of exports — it's not in
+            // DRIVE_COLUMNS, and hauling every drive's matched polyline through the
+            // Worker busts the Free-plan CPU cap (see drives.functions).
+            ((await db
+              .select(driveListColumns)
               .from(driveSession)
               .where(and(eq(driveSession.user_id, userId), vin ? eq(driveSession.vin, vin) : undefined))
-              .orderBy(desc(driveSession.started_at))) as DriveSession[])
+              .orderBy(desc(driveSession.started_at))) as Omit<DriveSession, 'route_geometry'>[])
 
       const columns = data.dataset === 'charges' ? CHARGE_COLUMNS : DRIVE_COLUMNS
 
