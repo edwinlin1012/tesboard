@@ -1,10 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useServerFn } from '@tanstack/react-start'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { AccentChip, BackHeader, BatteryGlyph, Card, EmptyCard, Icon } from '../../components/dashboard/primitives'
 import { Chart, DASH, Divider, SectionCard, StatTile, TileRow, fmtMoney } from '../../components/dashboard/detail'
 import { LeafletMap } from '../../components/dashboard/LeafletMap'
+import { ReplayMap3D, type ReplayReadout } from '../../components/dashboard/ReplayMap3D'
+import { buildReplayTrack, sampleAt } from '../../lib/replay-vm'
 import { useDash } from '../../components/dashboard/DashboardProvider'
 import { ICON, SECTION } from '../../components/dashboard/theme'
 import { cn } from '../../lib/utils'
@@ -46,6 +48,28 @@ function DriveDetailPage() {
   const startMs = payload.drive ? new Date(payload.drive.started_at).getTime() : 0
   const fmtX = (min: number) => fmtClockStamp(startMs + min * 60000, tz)
 
+  // 3D replay: timestamped GPS fixes + the map-matched route (when present)
+  // become a position-over-time track; null when the drive isn't animatable.
+  const track = useMemo(
+    () => buildReplayTrack(payload.samples, payload.drive?.route_geometry ?? null),
+    [payload],
+  )
+  const [mapMode, setMapMode] = useState<'3d' | '2d'>('3d')
+
+  const readoutsAt = useCallback(
+    (tMin: number): ReplayReadout[] => {
+      const s = sampleAt(payload.samples, tMin)
+      if (!s) return []
+      const out: ReplayReadout[] = []
+      if (s.speedMph != null) out.push({ label: 'Speed', value: `${fmtSpeed(u, s.speedMph * 1.60934)} ${speedUnit(u)}` })
+      if (s.powerKw != null) out.push({ label: 'Power', value: `${Math.round(s.powerKw)} kW` })
+      if (s.battery != null) out.push({ label: 'Battery', value: `${s.battery}%` })
+      if (s.elevationM != null) out.push({ label: 'Elev', value: `${fmtElev(u, s.elevationM)} ${elevUnit(u)}` })
+      return out
+    },
+    [payload, u],
+  )
+
   const fetchGpx = useServerFn(exportDriveGpx)
   const [gpxBusy, setGpxBusy] = useState(false)
   async function downloadGpx() {
@@ -80,26 +104,43 @@ function DriveDetailPage() {
           {/* Map + GPX export */}
           {vm.hasGps && (
             <Card radius={22} className="p-[14px]">
-              <LeafletMap points={payload.points} color={COLOR} isDark={isDark} height={240} />
+              {track && mapMode === '3d' ? (
+                <ReplayMap3D track={track} color={COLOR} isDark={isDark} height={300} readoutsAt={readoutsAt} />
+              ) : (
+                <LeafletMap points={payload.points} color={COLOR} isDark={isDark} height={240} />
+              )}
               <div className="mt-2 flex items-center justify-between gap-2.5">
-                <span className="pl-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="min-w-0 truncate pl-0.5 text-[10px] font-medium text-muted-foreground">
                   {payload.sampled
                     ? `Sampled GPS · ${payload.points.length} points`
                     : 'Approximate (start/end only — no breadcrumb yet)'}
                 </span>
-                <button
-                  type="button"
-                  onClick={downloadGpx}
-                  disabled={gpxBusy}
-                  title="Download this drive as a GPX track"
-                  style={{ color: COLOR, borderColor: COLOR }}
-                  className={cn(
-                    'flex-none whitespace-nowrap rounded-[30px] border bg-transparent px-3 py-[5px] text-[11px] font-semibold',
-                    gpxBusy ? 'cursor-default opacity-60' : 'cursor-pointer opacity-100',
+                <div className="flex flex-none items-center gap-2">
+                  {track && (
+                    <button
+                      type="button"
+                      onClick={() => setMapMode(mapMode === '3d' ? '2d' : '3d')}
+                      title={mapMode === '3d' ? 'Switch to the flat 2D map' : 'Switch to the 3D replay'}
+                      style={{ color: COLOR, borderColor: COLOR }}
+                      className="flex-none cursor-pointer whitespace-nowrap rounded-[30px] border bg-transparent px-3 py-[5px] text-[11px] font-semibold"
+                    >
+                      {mapMode === '3d' ? '2D map' : '3D replay'}
+                    </button>
                   )}
-                >
-                  {gpxBusy ? 'Exporting…' : 'Export GPX'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={downloadGpx}
+                    disabled={gpxBusy}
+                    title="Download this drive as a GPX track"
+                    style={{ color: COLOR, borderColor: COLOR }}
+                    className={cn(
+                      'flex-none whitespace-nowrap rounded-[30px] border bg-transparent px-3 py-[5px] text-[11px] font-semibold',
+                      gpxBusy ? 'cursor-default opacity-60' : 'cursor-pointer opacity-100',
+                    )}
+                  >
+                    {gpxBusy ? 'Exporting…' : 'Export GPX'}
+                  </button>
+                </div>
               </div>
             </Card>
           )}

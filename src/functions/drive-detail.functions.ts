@@ -35,6 +35,9 @@ export interface DriveSampleRaw {
   outsideC: number | null
   /** Instantaneous drive power (kW); negative = regen. */
   powerKw: number | null
+  /** GPS fix at this sample, when the snapshot carried one (drives the replay). */
+  lat: number | null
+  lng: number | null
 }
 
 export interface DriveDetailPayload {
@@ -181,6 +184,8 @@ export async function getDriveDetailCore(
     insideC: s.inT ?? null,
     outsideC: s.outT ?? null,
     powerKw: s.pwr ?? null,
+    lat: s.lat ?? null,
+    lng: s.lng ?? null,
   }))
   const samples = downsampleSeries(raw, MAX_SAMPLES)
 

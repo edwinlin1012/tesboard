@@ -52,7 +52,7 @@ function drive(over: Partial<DriveWithLocation> = {}): DriveWithLocation {
 }
 
 function sample(over: Partial<DriveSampleRaw> = {}): DriveSampleRaw {
-  return { tMin: 0, battery: null, speedMph: null, elevationM: null, insideC: null, outsideC: null, powerKw: null, ...over }
+  return { tMin: 0, battery: null, speedMph: null, elevationM: null, insideC: null, outsideC: null, powerKw: null, lat: null, lng: null, ...over }
 }
 
 function payload(over: Partial<DriveDetailPayload> = {}): DriveDetailPayload {
