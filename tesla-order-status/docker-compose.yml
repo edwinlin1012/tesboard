@@ -1,0 +1,17 @@
+# TOST watcher (chrisi51/tesla-order-status): polls the Tesla order status, logs one line per poll.
+# Outbound HTTPS only, no ports published. See ./README.md.
+services:
+  tost:
+    build: .
+    environment:
+      TZ: ${TZ:-Asia/Taipei}
+      TOST_INTERVAL_SECONDS: ${TOST_INTERVAL_SECONDS:-1800}
+    volumes:
+      - tost-data:/app/data/private   # Tesla tokens + order history, treat as an account credential
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    stop_grace_period: 30s            # lets an in-flight poll finish writing its files
+    restart: unless-stopped
+
+volumes:
+  tost-data:
